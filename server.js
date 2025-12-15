@@ -1,38 +1,61 @@
 import express from "express";
-import fetch from "node-fetch";
 import cors from "cors";
+import fetch from "node-fetch";
 
 const app = express();
+
+// Middleware
 app.use(cors());
 app.use(express.json());
 
+// Health check
+app.get("/", (req, res) => {
+  res.send("GetAnswer backend is running");
+});
+
+// Ask endpoint
 app.post("/ask", async (req, res) => {
   try {
     const { question } = req.body;
 
-    const response = await fetch(
-      "https://api.openai.com/v1/responses",
-      {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          model: "gpt-4.1-mini",
-          input: question
-        })
-      }
-    );
+    if (!question) {
+      return res.status(400).json({ answer: "Question is missing" });
+    }
 
-    const data = await response.json();
-    res.json({ answer: data.output_text });
+    const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: "You are a helpful assistant." },
+          { role: "user", content: question }
+        ],
+      }),
+    });
 
-  } catch (err) {
-    res.json({ answer: "Server error" });
+    const data = await openaiRes.json();
+
+    if (!data.choices) {
+      console.error(data);
+      return res.json({ answer: "OpenAI API error" });
+    }
+
+    res.json({
+      answer: data.choices[0].message.content,
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ answer: "Server error" });
   }
 });
 
-app.listen(3000, () => {
-  console.log("Server running");
+// IMPORTANT: Render PORT
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Server running on port ${PORT}`);
 });
